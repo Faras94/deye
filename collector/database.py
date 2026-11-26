@@ -15,7 +15,9 @@ class SupabaseRepository:
     """Encapsulates all Supabase PostgreSQL reads/writes using service_role."""
 
     def __init__(self, url: str, service_role_key: str, client: Optional[Client] = None) -> None:
-        self._client: Client = client or create_client(url, service_role_key)
+        clean_url = url.strip().rstrip("/")
+        clean_key = service_role_key.strip()
+        self._client: Client = client or create_client(clean_url, clean_key)
 
     def get_active_inverters(self) -> List[Dict[str, Any]]:
         resp = (
