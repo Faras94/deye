@@ -1,5 +1,6 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   Activity,
   AlertTriangle,
@@ -10,6 +11,7 @@ import {
   LogOut,
   Menu,
   Moon,
+  RefreshCw,
   Settings,
   ShieldCheck,
   Sun,
@@ -19,6 +21,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
+import { Switch } from '@/components/ui/switch'
 import { useAuth } from '@/hooks/useAuth'
 import { useAlerts } from '@/hooks/useSolarQueries'
 import { cn } from '@/lib/utils'
@@ -41,10 +44,35 @@ interface DashboardLayoutProps {
 
 export function DashboardLayout({ darkMode, onToggleDark }: DashboardLayoutProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [autoRefresh, setAutoRefresh] = useState<boolean>(() => {
+    return localStorage.getItem('deye-auto-refresh') === 'true'
+  })
+  const [refreshMinutes, setRefreshMinutes] = useState<number>(() => {
+    const saved = Number(localStorage.getItem('deye-refresh-minutes'))
+    return saved > 0 ? saved : 5
+  })
+  const [refreshing, setRefreshing] = useState(false)
+  const queryClient = useQueryClient()
   const { profile, role, isDemoMode, signOut, switchDemoRole } = useAuth()
   const { data: alerts } = useAlerts()
 
   const unresolvedAlerts = alerts?.filter((a) => !a.is_resolved).length ?? 0
+
+  const handleManualRefresh = async () => {
+    setRefreshing(true)
+    await queryClient.invalidateQueries()
+    setTimeout(() => setRefreshing(false), 400)
+  }
+
+  useEffect(() => {
+    localStorage.setItem('deye-auto-refresh', String(autoRefresh))
+    localStorage.setItem('deye-refresh-minutes', String(refreshMinutes))
+    if (!autoRefresh) return
+    const timer = window.setInterval(() => {
+      queryClient.invalidateQueries()
+    }, refreshMinutes * 60 * 1000)
+    return () => window.clearInterval(timer)
+  }, [autoRefresh, refreshMinutes, queryClient])
 
   const sidebarContent = (
     <div className="flex h-full flex-col justify-between p-4">
@@ -176,14 +204,47 @@ export function DashboardLayout({ darkMode, onToggleDark }: DashboardLayoutProps
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="flex items-center gap-2 rounded-lg border bg-card px-2.5 py-1 text-xs">
+              <span className="hidden sm:inline text-muted-foreground">Auto-refresh</span>
+              <Switch
+                checked={autoRefresh}
+                onCheckedChange={setAutoRefresh}
+                aria-label="Toggle dashboard auto-refresh"
+              />
+              <select
+                value={refreshMinutes}
+                onChange={(e) => setRefreshMinutes(Number(e.target.value))}
+                disabled={!autoRefresh}
+                aria-label="Auto-refresh interval"
+                className="bg-transparent text-xs font-medium focus:outline-none disabled:opacity-50"
+              >
+                <option value={1}>1m</option>
+                <option value={5}>5m</option>
+                <option value={10}>10m</option>
+                <option value={15}>15m</option>
+                <option value={30}>30m</option>
+              </select>
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleManualRefresh}
+              disabled={refreshing}
+              title="Refresh dashboard from Supabase"
+            >
+              <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
+              <span className="hidden sm:inline">Refresh</span>
+            </Button>
+
             {isDemoMode ? (
-              <Badge variant="warning" className="gap-1">
+              <Badge variant="warning" className="gap-1 hidden md:inline-flex">
                 <ShieldCheck className="h-3 w-3" />
-                Demo Mode (Connect Supabase for Live Data)
+                Demo Mode
               </Badge>
             ) : (
-              <Badge variant="success" className="gap-1">
+              <Badge variant="success" className="gap-1 hidden md:inline-flex">
                 <ShieldCheck className="h-3 w-3" />
                 Supabase Connected
               </Badge>

@@ -103,6 +103,7 @@ class DeyeCloudClient:
         self._access_token: Optional[str] = None
         self._token_expires_at: float = 0.0
         self.api_calls_made: int = 0
+        self.endpoint_counts: Dict[str, int] = {}
 
         if self._token_loader is not None:
             loaded = self._token_loader()
@@ -150,6 +151,9 @@ class DeyeCloudClient:
 
             try:
                 self.api_calls_made += 1
+                self.endpoint_counts["/v1.0/account/token"] = (
+                    self.endpoint_counts.get("/v1.0/account/token", 0) + 1
+                )
                 response = self._session.post(
                     url,
                     params={"appId": self.app_id},
@@ -237,6 +241,7 @@ class DeyeCloudClient:
             }
             try:
                 self.api_calls_made += 1
+                self.endpoint_counts[path] = self.endpoint_counts.get(path, 0) + 1
                 response = self._session.post(
                     url,
                     json=payload,

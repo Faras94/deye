@@ -262,7 +262,11 @@ def run_collection(
             readings_inserted=inserted_inv + inserted_pnl,
             api_calls_made=client.api_calls_made,
             error_message=err_msg,
-            details={"inverter_readings": inserted_inv, "panel_readings": inserted_pnl},
+            details={
+                "inverter_readings": inserted_inv,
+                "panel_readings": inserted_pnl,
+                "endpoints": client.endpoint_counts,
+            },
         )
         return {
             "status": status,

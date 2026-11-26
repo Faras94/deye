@@ -98,6 +98,11 @@ export interface CollectionLog {
   readings_inserted: number
   api_calls_made: number
   error_message: string | null
+  details?: {
+    endpoints?: Record<string, number>
+    inverter_readings?: number
+    panel_readings?: number
+  } | null
 }
 
 export interface SolarAlert {

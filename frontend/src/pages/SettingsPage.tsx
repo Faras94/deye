@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Lock, Plus, Server, Users } from 'lucide-react'
+import { Activity, Check, Lock, Pencil, Plus, Server, Trash2, Users, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAuth } from '@/hooks/useAuth'
 import {
+  useCollectionLogs,
   useInverters,
   usePanels,
   useProfiles,
@@ -22,10 +23,13 @@ export function SettingsPage() {
   const { data: inverters } = useInverters()
   const { data: panels } = usePanels()
   const { data: settings } = useSystemSettings()
+  const { data: collectionLogs } = useCollectionLogs(100)
 
   const [newPanelName, setNewPanelName] = useState('')
   const [newPanelInvId, setNewPanelInvId] = useState('')
   const [newPanelChannel, setNewPanelChannel] = useState('1')
+  const [editingPanelId, setEditingPanelId] = useState<string | null>(null)
+  const [editingPanelName, setEditingPanelName] = useState('')
 
   const addPanelMutation = useMutation({
     mutationFn: () =>
@@ -41,18 +45,73 @@ export function SettingsPage() {
     },
   })
 
+  const renamePanelMutation = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) =>
+      solarDataService.renamePanel(id, name),
+    onSuccess: () => {
+      setEditingPanelId(null)
+      queryClient.invalidateQueries({ queryKey: ['panels'] })
+    },
+  })
+
+  const deletePanelMutation = useMutation({
+    mutationFn: (id: string) => solarDataService.deletePanel(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['panels'] })
+    },
+  })
+
   const roleMutation = useMutation({
     mutationFn: ({ userId, role }: { userId: string; role: 'admin' | 'viewer' }) =>
       solarDataService.updateUserRole(userId, role),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['profiles'] }),
   })
 
+  const invById = useMemo(
+    () => new Map((inverters ?? []).map((inv) => [inv.id, inv])),
+    [inverters],
+  )
+
+  const apiUsage = useMemo(() => {
+    const logs = collectionLogs ?? []
+    const todayStr = new Date().toISOString().slice(0, 10)
+    let todayCalls = 0
+    let totalCalls = 0
+    const endpoints: Record<string, number> = {}
+
+    logs.forEach((log) => {
+      const calls = Number(log.api_calls_made ?? 0)
+      totalCalls += calls
+      if (log.started_at.slice(0, 10) === todayStr) {
+        todayCalls += calls
+      }
+      const ep = log.details?.endpoints
+      if (ep) {
+        Object.entries(ep).forEach(([path, count]) => {
+          endpoints[path] = (endpoints[path] ?? 0) + Number(count ?? 0)
+        })
+      }
+    })
+
+    return {
+      todayCalls,
+      totalCalls,
+      runCount: logs.length,
+      endpoints: Object.entries(endpoints).sort((a, b) => b[1] - a[1]),
+    }
+  }, [collectionLogs])
+
+  const visibleSettings = useMemo(
+    () => (settings ?? []).filter((s) => s.key !== 'deye_token_cache'),
+    [settings],
+  )
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Settings & Administration</h1>
         <p className="text-sm text-muted-foreground">
-          Manage household users (max 5), microinverters, 630 W panels, and collector status.
+          Manage household users (max 5), microinverters, 630 W panels, and API usage limits.
         </p>
       </div>
 
@@ -62,6 +121,93 @@ export function SettingsPage() {
           <span>Viewer account: administrative changes are disabled by Row Level Security.</span>
         </div>
       )}
+
+      {/* API Call Tracker & Limits */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Activity className="h-4 w-4 text-emerald-500" />
+            DeyeCloud API Usage & Quota Tracker
+          </CardTitle>
+          <CardDescription>
+            Tracks every DeyeCloud API call made by the scheduled collector (dashboard reads use Supabase only = 0 DeyeCloud calls)
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="rounded-lg border p-3">
+              <div className="text-xs text-muted-foreground">API Calls Today (UTC)</div>
+              <div className="text-2xl font-bold mt-0.5">{apiUsage.todayCalls}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">
+                30-min schedule ≈ 48 calls/day
+              </div>
+            </div>
+            <div className="rounded-lg border p-3">
+              <div className="text-xs text-muted-foreground">Tracked Calls (Last {apiUsage.runCount} Runs)</div>
+              <div className="text-2xl font-bold mt-0.5">{apiUsage.totalCalls}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">
+                Token cached to avoid extra auth calls
+              </div>
+            </div>
+            <div className="rounded-lg border p-3">
+              <div className="text-xs text-muted-foreground">Endpoints Called</div>
+              {apiUsage.endpoints.length > 0 ? (
+                <div className="mt-1 space-y-1">
+                  {apiUsage.endpoints.map(([path, count]) => (
+                    <div key={path} className="flex justify-between text-xs">
+                      <span className="font-mono truncate">{path}</span>
+                      <span className="font-semibold">{count}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-xs text-muted-foreground mt-1">
+                  Endpoint breakdown available on next collector run
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b text-left text-muted-foreground">
+                  <th className="py-2 pr-3 font-medium">Run Time</th>
+                  <th className="py-2 pr-3 font-medium">Status</th>
+                  <th className="py-2 pr-3 font-medium">API Calls</th>
+                  <th className="py-2 pr-3 font-medium">Devices</th>
+                  <th className="py-2 font-medium">Readings Saved</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(collectionLogs ?? []).slice(0, 8).map((log) => (
+                  <tr key={log.id} className="border-b last:border-0">
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {new Date(log.started_at).toLocaleString()}
+                    </td>
+                    <td className="py-2 pr-3">
+                      <Badge
+                        variant={
+                          log.status === 'success'
+                            ? 'success'
+                            : log.status === 'failed'
+                              ? 'destructive'
+                              : 'warning'
+                        }
+                      >
+                        {log.status}
+                      </Badge>
+                    </td>
+                    <td className="py-2 pr-3 font-semibold">{log.api_calls_made}</td>
+                    <td className="py-2 pr-3">{log.devices_queried}</td>
+                    <td className="py-2">{log.readings_inserted}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* User Management */}
       <Card>
@@ -109,7 +255,7 @@ export function SettingsPage() {
         <CardHeader>
           <CardTitle className="text-base">Solar Panel Configuration (630 W Modules)</CardTitle>
           <CardDescription>
-            Map each physical 630 W panel to its microinverter PV channel ({panels?.length ?? 0} configured)
+            Add, rename, or remove physical 630 W panels ({panels?.length ?? 0} configured)
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -158,14 +304,83 @@ export function SettingsPage() {
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {panels?.map((p) => (
-              <div key={p.id} className="rounded-lg border px-3 py-2 text-xs flex justify-between">
-                <span className="font-medium">{p.name}</span>
-                <span className="text-muted-foreground">
-                  PV{p.channel_index} • {p.rated_capacity_w} W
-                </span>
-              </div>
-            ))}
+            {panels?.map((p) => {
+              const inv = invById.get(p.inverter_id)
+              const isEditing = editingPanelId === p.id
+
+              return (
+                <div
+                  key={p.id}
+                  className="rounded-lg border px-3 py-2 text-xs flex items-center justify-between gap-2"
+                >
+                  <div className="min-w-0 flex-1">
+                    {isEditing ? (
+                      <div className="flex items-center gap-1">
+                        <Input
+                          value={editingPanelName}
+                          onChange={(e) => setEditingPanelName(e.target.value)}
+                          className="h-7 text-xs"
+                        />
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7"
+                          disabled={!editingPanelName.trim() || renamePanelMutation.isPending}
+                          onClick={() =>
+                            renamePanelMutation.mutate({
+                              id: p.id,
+                              name: editingPanelName.trim(),
+                            })
+                          }
+                        >
+                          <Check className="h-3.5 w-3.5 text-emerald-500" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7"
+                          onClick={() => setEditingPanelId(null)}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="font-medium truncate">{p.name}</div>
+                        <div className="text-muted-foreground truncate">
+                          {inv?.name ?? 'Inverter'} • PV{p.channel_index} • {p.rated_capacity_w} W
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {isAdmin && !isEditing && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingPanelId(p.id)
+                          setEditingPanelName(p.name)
+                        }}
+                        title="Rename panel"
+                        className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deletePanelMutation.mutate(p.id)}
+                        disabled={deletePanelMutation.isPending}
+                        title="Delete panel"
+                        className="p-1 rounded hover:bg-destructive/15 text-muted-foreground hover:text-destructive"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </CardContent>
       </Card>
@@ -189,7 +404,7 @@ export function SettingsPage() {
             <div className="text-xs text-muted-foreground">DeyeCloud Collector</div>
             <div className="font-medium mt-0.5">GitHub Actions (Every 30 minutes)</div>
           </div>
-          {settings?.map((s) => (
+          {visibleSettings.map((s) => (
             <div key={s.key} className="rounded-lg border p-3">
               <div className="text-xs text-muted-foreground">{s.description || s.key}</div>
               <div className="font-mono text-xs mt-0.5">{JSON.stringify(s.value)}</div>

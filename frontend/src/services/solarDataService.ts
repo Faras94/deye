@@ -204,6 +204,18 @@ export const solarDataService = {
     if (error) throw error
   },
 
+  async renamePanel(panelId: string, name: string): Promise<void> {
+    if (!isSupabaseConfigured || !supabase) return
+    const { error } = await supabase.from('panels').update({ name }).eq('id', panelId)
+    if (error) throw error
+  },
+
+  async deletePanel(panelId: string): Promise<void> {
+    if (!isSupabaseConfigured || !supabase) return
+    const { error } = await supabase.from('panels').delete().eq('id', panelId)
+    if (error) throw error
+  },
+
   async updateInverter(id: string, patch: Partial<Inverter>): Promise<void> {
     if (!isSupabaseConfigured || !supabase) return
     const { error } = await supabase.from('inverters').update(patch).eq('id', id)
