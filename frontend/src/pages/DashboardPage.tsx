@@ -46,8 +46,10 @@ export function DashboardPage() {
     value: Math.round(value),
   }))
 
-  const lastSuccess = logs?.find((l) => l.status === 'success' || l.status === 'partial')
-  const recentErrors = logs?.filter((l) => l.status === 'failed' || l.error_message) ?? []
+  const lastSuccessIdx = logs?.findIndex((l) => l.status === 'success' || l.status === 'partial') ?? -1
+  const lastSuccess = lastSuccessIdx >= 0 ? logs?.[lastSuccessIdx] : undefined
+  const logsSinceLastSuccess = lastSuccessIdx >= 0 ? (logs?.slice(0, lastSuccessIdx) ?? []) : (logs ?? [])
+  const recentErrors = logsSinceLastSuccess.filter((l) => l.status === 'failed' || l.error_message)
 
   if (loadingInv || loadingRead || loadingLogs) {
     return (
