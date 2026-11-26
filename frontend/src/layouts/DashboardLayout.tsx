@@ -26,6 +26,7 @@ import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { useAuth } from '@/hooks/useAuth'
 import { useAlerts, useCollectionLogs } from '@/hooks/useSolarQueries'
+import { supabase } from '@/services/supabase'
 import { cn } from '@/lib/utils'
 
 const navItems = [
@@ -61,7 +62,7 @@ export function DashboardLayout({ darkMode, onToggleDark }: DashboardLayoutProps
     'manual-cache',
   )
   const queryClient = useQueryClient()
-  const { profile, role, isAdmin, isDemoMode, signOut, switchDemoRole } = useAuth()
+  const { profile, role, isDemoMode, signOut, switchDemoRole } = useAuth()
   const { data: alerts } = useAlerts()
   const { data: collectionLogs } = useCollectionLogs(1)
   const lastCollectedAt = collectionLogs?.[0]?.started_at
@@ -78,71 +79,42 @@ export function DashboardLayout({ darkMode, onToggleDark }: DashboardLayoutProps
   }
 
   const handleLiveApiRefresh = async () => {
-    if (isDemoMode) {
+    if (isDemoMode || !supabase) {
       setLiveStatusMsg('Live API sync is disabled in Demo Mode.')
-      return
-    }
-    const ghToken = localStorage.getItem('deye-gh-pat')?.trim()
-    if (!ghToken) {
-      setLiveStatusMsg(
-        isAdmin
-          ? 'Set a GitHub Actions token in Settings → Live API Trigger to run from here.'
-          : 'Ask an Admin to configure the Live API trigger token in Settings.',
-      )
       return
     }
 
     setLiveSyncing(true)
-    setLiveStatusMsg('Triggering DeyeCloud collector...')
-    const triggerTime = new Date().toISOString()
+    setLiveStatusMsg('Fetching live data from DeyeCloud API...')
 
     try {
-      const resp = await fetch(
-        'https://api.github.com/repos/Faras94/deye/actions/workflows/collect-data.yml/dispatches',
-        {
-          method: 'POST',
-          headers: {
-            Accept: 'application/vnd.github+json',
-            Authorization: `Bearer ${ghToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ ref: 'main' }),
-        },
-      )
-
-      if (!resp.ok) {
-        const errText = await resp.text()
-        throw new Error(`GitHub API ${resp.status}: ${errText.slice(0, 120)}`)
+      const { data: sessionData } = await supabase.auth.getSession()
+      const accessToken = sessionData.session?.access_token
+      if (!accessToken) {
+        throw new Error('Please sign in again to fetch live API data.')
       }
 
-      setLiveStatusMsg('Collector started — waiting for fresh DeyeCloud data...')
+      const resp = await fetch('/api/collect', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      })
 
-      // Poll collection_logs via React Query every 5s up to 60s
-      let completed = false
-      for (let attempt = 0; attempt < 12; attempt++) {
-        await new Promise((r) => setTimeout(r, 5000))
-        await queryClient.invalidateQueries({ queryKey: ['collection_logs'] })
-        const logs = queryClient.getQueryData<Array<{ started_at: string; status: string }>>([
-          'collection_logs',
-          1,
-        ])
-        const latest = logs?.[0]
-        if (latest && latest.started_at >= triggerTime && latest.status !== 'running') {
-          completed = true
-          break
-        }
+      const body = await resp.json().catch(() => ({}))
+      if (!resp.ok) {
+        throw new Error(body.error || `Live API request failed (${resp.status})`)
       }
 
       await queryClient.invalidateQueries()
       setLastRefreshedAt(new Date())
       setLastRefreshMode('live-api')
       setLiveStatusMsg(
-        completed
-          ? 'Live DeyeCloud data loaded.'
-          : 'Collector triggered. Data will appear shortly — click Cache to reload.',
+        `Live API updated: ${body.readings_inserted ?? 0} readings saved (${body.api_calls_made ?? 1} API call).`,
       )
     } catch (err) {
-      setLiveStatusMsg(err instanceof Error ? err.message : 'Failed to trigger Live API sync')
+      setLiveStatusMsg(err instanceof Error ? err.message : 'Failed to fetch live API data')
     } finally {
       setLiveSyncing(false)
     }
@@ -375,9 +347,6 @@ export function DashboardLayout({ darkMode, onToggleDark }: DashboardLayoutProps
             <div className="flex items-center gap-2 text-muted-foreground">
               <RefreshCw className={cn('h-3.5 w-3.5 shrink-0', liveSyncing && 'animate-spin text-emerald-500')} />
               <span>{liveStatusMsg}</span>
-              <NavLink to="/settings" className="text-primary hover:underline font-medium">
-                Settings
-              </NavLink>
             </div>
             <button
               type="button"
