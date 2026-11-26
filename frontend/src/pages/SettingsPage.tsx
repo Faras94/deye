@@ -30,6 +30,8 @@ export function SettingsPage() {
   const [newPanelChannel, setNewPanelChannel] = useState('1')
   const [editingPanelId, setEditingPanelId] = useState<string | null>(null)
   const [editingPanelName, setEditingPanelName] = useState('')
+  const [ghTokenInput, setGhTokenInput] = useState<string>(() => localStorage.getItem('deye-gh-pat') ?? '')
+  const [ghTokenSaved, setGhTokenSaved] = useState<boolean>(() => Boolean(localStorage.getItem('deye-gh-pat')))
 
   const addPanelMutation = useMutation({
     mutationFn: () =>
@@ -405,6 +407,68 @@ export function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Live API Trigger Setup */}
+      {isAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Live API Refresh (DeyeCloud On-Demand)</CardTitle>
+            <CardDescription>
+              Optional: save a GitHub Fine-Grained Token (Actions: Read &amp; Write on Faras94/deye)
+              in this browser so the header&apos;s &quot;Live API&quot; button can trigger a fresh
+              DeyeCloud collection immediately. Stored locally in your browser only.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Input
+                type="password"
+                placeholder="github_pat_..."
+                value={ghTokenInput}
+                onChange={(e) => setGhTokenInput(e.target.value)}
+                className="flex-1"
+              />
+              <Button
+                onClick={() => {
+                  const trimmed = ghTokenInput.trim()
+                  if (trimmed) {
+                    localStorage.setItem('deye-gh-pat', trimmed)
+                    setGhTokenSaved(true)
+                  }
+                }}
+                disabled={!ghTokenInput.trim()}
+              >
+                Save Token
+              </Button>
+              {ghTokenSaved && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    localStorage.removeItem('deye-gh-pat')
+                    setGhTokenInput('')
+                    setGhTokenSaved(false)
+                  }}
+                >
+                  Clear
+                </Button>
+              )}
+            </div>
+            <div className="text-xs text-muted-foreground flex items-center justify-between flex-wrap gap-2">
+              <span>
+                Status: {ghTokenSaved ? 'Configured in this browser' : 'Not configured'}
+              </span>
+              <a
+                href="https://github.com/Faras94/deye/actions/workflows/collect-data.yml"
+                target="_blank"
+                rel="noreferrer"
+                className="text-primary hover:underline"
+              >
+                Open GitHub Actions Collector →
+              </a>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* System & API Status */}
       <Card>

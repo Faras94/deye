@@ -5,7 +5,9 @@ import {
   Activity,
   AlertTriangle,
   BarChart3,
+  Cloud,
   Cpu,
+  Database,
   History,
   LayoutDashboard,
   LogOut,
@@ -23,7 +25,7 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { useAuth } from '@/hooks/useAuth'
-import { useAlerts } from '@/hooks/useSolarQueries'
+import { useAlerts, useCollectionLogs } from '@/hooks/useSolarQueries'
 import { cn } from '@/lib/utils'
 
 const navItems = [
@@ -49,23 +51,101 @@ export function DashboardLayout({ darkMode, onToggleDark }: DashboardLayoutProps
   })
   const [refreshMinutes, setRefreshMinutes] = useState<number>(() => {
     const saved = Number(localStorage.getItem('deye-refresh-minutes'))
-    return saved > 0 ? saved : 5
+    return saved > 0 && saved !== 30 ? saved : 5
   })
   const [refreshing, setRefreshing] = useState(false)
+  const [liveSyncing, setLiveSyncing] = useState(false)
+  const [liveStatusMsg, setLiveStatusMsg] = useState<string | null>(null)
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date>(() => new Date())
-  const [lastRefreshMode, setLastRefreshMode] = useState<'auto' | 'manual'>('manual')
+  const [lastRefreshMode, setLastRefreshMode] = useState<'auto-cache' | 'manual-cache' | 'live-api'>(
+    'manual-cache',
+  )
   const queryClient = useQueryClient()
-  const { profile, role, isDemoMode, signOut, switchDemoRole } = useAuth()
+  const { profile, role, isAdmin, isDemoMode, signOut, switchDemoRole } = useAuth()
   const { data: alerts } = useAlerts()
+  const { data: collectionLogs } = useCollectionLogs(1)
+  const lastCollectedAt = collectionLogs?.[0]?.started_at
 
   const unresolvedAlerts = alerts?.filter((a) => !a.is_resolved).length ?? 0
 
-  const handleManualRefresh = async () => {
+  const handleCacheRefresh = async () => {
     setRefreshing(true)
+    setLiveStatusMsg(null)
     await queryClient.invalidateQueries()
     setLastRefreshedAt(new Date())
-    setLastRefreshMode('manual')
+    setLastRefreshMode('manual-cache')
     setTimeout(() => setRefreshing(false), 400)
+  }
+
+  const handleLiveApiRefresh = async () => {
+    if (isDemoMode) {
+      setLiveStatusMsg('Live API sync is disabled in Demo Mode.')
+      return
+    }
+    const ghToken = localStorage.getItem('deye-gh-pat')?.trim()
+    if (!ghToken) {
+      setLiveStatusMsg(
+        isAdmin
+          ? 'Set a GitHub Actions token in Settings → Live API Trigger to run from here.'
+          : 'Ask an Admin to configure the Live API trigger token in Settings.',
+      )
+      return
+    }
+
+    setLiveSyncing(true)
+    setLiveStatusMsg('Triggering DeyeCloud collector...')
+    const triggerTime = new Date().toISOString()
+
+    try {
+      const resp = await fetch(
+        'https://api.github.com/repos/Faras94/deye/actions/workflows/collect-data.yml/dispatches',
+        {
+          method: 'POST',
+          headers: {
+            Accept: 'application/vnd.github+json',
+            Authorization: `Bearer ${ghToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ ref: 'main' }),
+        },
+      )
+
+      if (!resp.ok) {
+        const errText = await resp.text()
+        throw new Error(`GitHub API ${resp.status}: ${errText.slice(0, 120)}`)
+      }
+
+      setLiveStatusMsg('Collector started — waiting for fresh DeyeCloud data...')
+
+      // Poll collection_logs via React Query every 5s up to 60s
+      let completed = false
+      for (let attempt = 0; attempt < 12; attempt++) {
+        await new Promise((r) => setTimeout(r, 5000))
+        await queryClient.invalidateQueries({ queryKey: ['collection_logs'] })
+        const logs = queryClient.getQueryData<Array<{ started_at: string; status: string }>>([
+          'collection_logs',
+          1,
+        ])
+        const latest = logs?.[0]
+        if (latest && latest.started_at >= triggerTime && latest.status !== 'running') {
+          completed = true
+          break
+        }
+      }
+
+      await queryClient.invalidateQueries()
+      setLastRefreshedAt(new Date())
+      setLastRefreshMode('live-api')
+      setLiveStatusMsg(
+        completed
+          ? 'Live DeyeCloud data loaded.'
+          : 'Collector triggered. Data will appear shortly — click Cache to reload.',
+      )
+    } catch (err) {
+      setLiveStatusMsg(err instanceof Error ? err.message : 'Failed to trigger Live API sync')
+    } finally {
+      setLiveSyncing(false)
+    }
   }
 
   useEffect(() => {
@@ -75,7 +155,7 @@ export function DashboardLayout({ darkMode, onToggleDark }: DashboardLayoutProps
     const timer = window.setInterval(() => {
       queryClient.invalidateQueries()
       setLastRefreshedAt(new Date())
-      setLastRefreshMode('auto')
+      setLastRefreshMode('auto-cache')
     }, refreshMinutes * 60 * 1000)
     return () => window.clearInterval(timer)
   }, [autoRefresh, refreshMinutes, queryClient])
@@ -230,26 +310,49 @@ export function DashboardLayout({ darkMode, onToggleDark }: DashboardLayoutProps
                 <option value={5}>5m</option>
                 <option value={10}>10m</option>
                 <option value={15}>15m</option>
-                <option value={30}>30m</option>
                 <option value={60}>1h</option>
               </select>
             </div>
 
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleManualRefresh}
-              disabled={refreshing}
-              title="Refresh dashboard from Supabase"
-            >
-              <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
-              <span className="hidden sm:inline">Refresh</span>
-            </Button>
+            <div className="flex items-center rounded-lg border bg-card p-0.5 gap-0.5">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs gap-1"
+                onClick={handleCacheRefresh}
+                disabled={refreshing}
+                title="Load from Cache / Supabase Memory (0 DeyeCloud API calls)"
+              >
+                <Database className={cn('h-3.5 w-3.5 text-sky-500', refreshing && 'animate-pulse')} />
+                <span>Cache</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs gap-1"
+                onClick={handleLiveApiRefresh}
+                disabled={liveSyncing}
+                title={
+                  lastCollectedAt
+                    ? `Fetch Live from DeyeCloud API (last collected ${new Date(lastCollectedAt).toLocaleTimeString()})`
+                    : 'Fetch Live from DeyeCloud API'
+                }
+              >
+                <Cloud className={cn('h-3.5 w-3.5 text-emerald-500', liveSyncing && 'animate-pulse')} />
+                <span>{liveSyncing ? 'Syncing...' : 'Live API'}</span>
+              </Button>
+            </div>
 
             <span className="hidden md:inline text-xs text-muted-foreground whitespace-nowrap">
               {lastRefreshedAt.toLocaleTimeString()}{' '}
               <span className="text-[10px]">
-                ({lastRefreshMode === 'auto' ? `Auto ${refreshMinutes}m` : 'Manual'})
+                (
+                {lastRefreshMode === 'auto-cache'
+                  ? `Auto ${refreshMinutes}m • Cache`
+                  : lastRefreshMode === 'live-api'
+                    ? 'Live API'
+                    : 'Manual • Cache'}
+                )
               </span>
             </span>
 
@@ -266,6 +369,26 @@ export function DashboardLayout({ darkMode, onToggleDark }: DashboardLayoutProps
             )}
           </div>
         </header>
+
+        {liveStatusMsg && (
+          <div className="border-b bg-muted/50 px-4 lg:px-6 py-2 text-xs flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <RefreshCw className={cn('h-3.5 w-3.5 shrink-0', liveSyncing && 'animate-spin text-emerald-500')} />
+              <span>{liveStatusMsg}</span>
+              <NavLink to="/settings" className="text-primary hover:underline font-medium">
+                Settings
+              </NavLink>
+            </div>
+            <button
+              type="button"
+              onClick={() => setLiveStatusMsg(null)}
+              className="text-muted-foreground hover:text-foreground"
+              aria-label="Dismiss status"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
 
         <main className="flex-1 p-4 pb-20 sm:p-6 sm:pb-20 lg:p-8 lg:pb-8 max-w-7xl w-full mx-auto">
           <Outlet />
