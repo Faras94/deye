@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, CheckCircle2 } from 'lucide-react'
+import { AlertTriangle, CheckCheck, CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -12,9 +13,17 @@ export function AlertsPage() {
   const { isAdmin, profile } = useAuth()
   const { data: alerts, isLoading } = useAlerts()
   const queryClient = useQueryClient()
+  const [showResolved, setShowResolved] = useState(false)
 
   const resolveMutation = useMutation({
     mutationFn: (alertId: number) => solarDataService.resolveAlert(alertId, profile?.id ?? ''),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['alerts'] })
+    },
+  })
+
+  const resolveAllMutation = useMutation({
+    mutationFn: () => solarDataService.resolveAllAlerts(profile?.id ?? ''),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['alerts'] })
     },
@@ -24,16 +33,42 @@ export function AlertsPage() {
     return <Skeleton className="h-64 w-full" />
   }
 
+  const activeAlerts = (alerts ?? []).filter((a) => !a.is_resolved)
+  const visibleAlerts = showResolved ? (alerts ?? []) : activeAlerts
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">System Alerts</h1>
-        <p className="text-sm text-muted-foreground">
-          Monitors inverter offline states, missing data, generation drops, and API auth errors.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">System Alerts</h1>
+          <p className="text-sm text-muted-foreground">
+            Monitors inverter offline states, missing data, generation drops, and API auth errors.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowResolved((s) => !s)}
+          >
+            {showResolved ? 'Hide Resolved' : 'Show Resolved'}
+          </Button>
+          {isAdmin && activeAlerts.length > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={resolveAllMutation.isPending}
+              onClick={() => resolveAllMutation.mutate()}
+            >
+              <CheckCheck className="h-4 w-4" />
+              Resolve All ({activeAlerts.length})
+            </Button>
+          )}
+        </div>
       </div>
 
-      {!alerts || alerts.length === 0 ? (
+      {visibleAlerts.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center space-y-2">
             <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto" />
@@ -45,7 +80,7 @@ export function AlertsPage() {
         </Card>
       ) : (
         <div className="space-y-3">
-          {alerts.map((alert) => (
+          {visibleAlerts.map((alert) => (
             <Card key={alert.id}>
               <CardHeader className="pb-2 flex flex-row items-start justify-between gap-4">
                 <div className="space-y-1">

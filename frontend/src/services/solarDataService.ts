@@ -128,6 +128,19 @@ export const solarDataService = {
     if (error) throw error
   },
 
+  async resolveAllAlerts(resolvedBy: string): Promise<void> {
+    if (!isSupabaseConfigured || !supabase) return
+    const { error } = await supabase
+      .from('alerts')
+      .update({
+        is_resolved: true,
+        resolved_at: new Date().toISOString(),
+        resolved_by: resolvedBy,
+      })
+      .eq('is_resolved', false)
+    if (error) throw error
+  },
+
   async getHistoryPage(params: {
     page: number
     pageSize: number
