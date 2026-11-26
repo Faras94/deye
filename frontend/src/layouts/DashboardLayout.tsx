@@ -52,6 +52,8 @@ export function DashboardLayout({ darkMode, onToggleDark }: DashboardLayoutProps
     return saved > 0 ? saved : 5
   })
   const [refreshing, setRefreshing] = useState(false)
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date>(() => new Date())
+  const [lastRefreshMode, setLastRefreshMode] = useState<'auto' | 'manual' | 'initial'>('initial')
   const queryClient = useQueryClient()
   const { profile, role, isDemoMode, signOut, switchDemoRole } = useAuth()
   const { data: alerts } = useAlerts()
@@ -61,6 +63,8 @@ export function DashboardLayout({ darkMode, onToggleDark }: DashboardLayoutProps
   const handleManualRefresh = async () => {
     setRefreshing(true)
     await queryClient.invalidateQueries()
+    setLastRefreshedAt(new Date())
+    setLastRefreshMode('manual')
     setTimeout(() => setRefreshing(false), 400)
   }
 
@@ -70,6 +74,8 @@ export function DashboardLayout({ darkMode, onToggleDark }: DashboardLayoutProps
     if (!autoRefresh) return
     const timer = window.setInterval(() => {
       queryClient.invalidateQueries()
+      setLastRefreshedAt(new Date())
+      setLastRefreshMode('auto')
     }, refreshMinutes * 60 * 1000)
     return () => window.clearInterval(timer)
   }, [autoRefresh, refreshMinutes, queryClient])
@@ -238,6 +244,16 @@ export function DashboardLayout({ darkMode, onToggleDark }: DashboardLayoutProps
               <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
               <span className="hidden sm:inline">Refresh</span>
             </Button>
+
+            <span className="hidden xl:inline text-xs text-muted-foreground whitespace-nowrap">
+              Last refreshed: {lastRefreshedAt.toLocaleTimeString()} (
+              {lastRefreshMode === 'auto'
+                ? 'Auto'
+                : lastRefreshMode === 'manual'
+                  ? 'Manual'
+                  : 'Loaded'}
+              )
+            </span>
 
             {isDemoMode ? (
               <Badge variant="warning" className="gap-1 hidden md:inline-flex">
