@@ -84,7 +84,10 @@ class DeyeCloudClient:
         token_loader: Optional[Callable[[], Optional[Tuple[str, float]]]] = None,
         token_saver: Optional[Callable[[str, float], None]] = None,
     ) -> None:
-        self.base_url = base_url.rstrip("/")
+        clean_base = base_url.strip().strip('"').strip("'").rstrip("/")
+        if clean_base and not clean_base.startswith(("http://", "https://")):
+            clean_base = f"https://{clean_base}"
+        self.base_url = clean_base
         self.app_id = app_id.strip()
         self.app_secret = app_secret.strip()
         self.email = email.strip()
