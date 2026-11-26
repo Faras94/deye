@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Download } from 'lucide-react'
+import { Clock, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -10,26 +10,50 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useInverters } from '@/hooks/useSolarQueries'
 import { solarDataService } from '@/services/solarDataService'
 
+function toLocalDatetimeInput(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
 export function HistoryPage() {
   const { data: inverters } = useInverters()
   const [deviceSn, setDeviceSn] = useState('all')
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
+  const [startDateTime, setStartDateTime] = useState('')
+  const [endDateTime, setEndDateTime] = useState('')
+  const [activePreset, setActivePreset] = useState<'all' | '1h' | '6h' | '24h' | '7d'>('all')
   const [page, setPage] = useState(0)
   const pageSize = 20
 
+  const startIso = startDateTime ? new Date(startDateTime).toISOString() : undefined
+  const endIso = endDateTime ? new Date(endDateTime).toISOString() : undefined
+
   const { data, isLoading } = useQuery({
-    queryKey: ['history_page', page, deviceSn, startDate, endDate],
+    queryKey: ['history_page', page, deviceSn, startIso, endIso],
     queryFn: () =>
       solarDataService.getHistoryPage({
         page,
         pageSize,
         deviceSn,
-        startDate: startDate || undefined,
-        endDate: endDate || undefined,
+        startIso,
+        endIso,
       }),
     staleTime: 30_000,
   })
+
+  const applyPreset = (preset: 'all' | '1h' | '6h' | '24h' | '7d') => {
+    setActivePreset(preset)
+    setPage(0)
+    if (preset === 'all') {
+      setStartDateTime('')
+      setEndDateTime('')
+      return
+    }
+    const now = new Date()
+    const hoursMap = { '1h': 1, '6h': 6, '24h': 24, '7d': 24 * 7 }
+    const start = new Date(now.getTime() - hoursMap[preset] * 3600 * 1000)
+    setStartDateTime(toLocalDatetimeInput(start))
+    setEndDateTime(toLocalDatetimeInput(now))
+  }
 
   const rows = data?.rows ?? []
   const total = data?.total ?? 0
@@ -79,7 +103,7 @@ export function HistoryPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Historical Records</h1>
           <p className="text-sm text-muted-foreground">
-            Filter stored UTC telemetry by date range or inverter and export to CSV.
+            Filter stored telemetry by 1-hour / custom date &amp; time range or inverter and export to CSV.
           </p>
         </div>
         <Button variant="outline" onClick={handleExportCsv} disabled={rows.length === 0}>
@@ -89,8 +113,31 @@ export function HistoryPage() {
       </div>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="pb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <CardTitle className="text-base">Filters</CardTitle>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {(
+              [
+                { id: '1h', label: 'Last 1 Hour' },
+                { id: '6h', label: '6 Hours' },
+                { id: '24h', label: '24 Hours' },
+                { id: '7d', label: '7 Days' },
+                { id: 'all', label: 'All' },
+              ] as const
+            ).map((p) => (
+              <Button
+                key={p.id}
+                type="button"
+                size="sm"
+                variant={activePreset === p.id ? 'default' : 'outline'}
+                onClick={() => applyPreset(p.id)}
+                className="h-7 px-2.5 text-xs"
+              >
+                <Clock className="h-3 w-3" />
+                {p.label}
+              </Button>
+            ))}
+          </div>
         </CardHeader>
         <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="space-y-1.5">
@@ -113,25 +160,27 @@ export function HistoryPage() {
             </select>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="start-date">Start Date (UTC)</Label>
+            <Label htmlFor="start-datetime">Start Date &amp; Time</Label>
             <Input
-              id="start-date"
-              type="date"
-              value={startDate}
+              id="start-datetime"
+              type="datetime-local"
+              value={startDateTime}
               onChange={(e) => {
-                setStartDate(e.target.value)
+                setStartDateTime(e.target.value)
+                setActivePreset('all')
                 setPage(0)
               }}
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="end-date">End Date (UTC)</Label>
+            <Label htmlFor="end-datetime">End Date &amp; Time</Label>
             <Input
-              id="end-date"
-              type="date"
-              value={endDate}
+              id="end-datetime"
+              type="datetime-local"
+              value={endDateTime}
               onChange={(e) => {
-                setEndDate(e.target.value)
+                setEndDateTime(e.target.value)
+                setActivePreset('all')
                 setPage(0)
               }}
             />
@@ -154,48 +203,96 @@ export function HistoryPage() {
               No historical records match the selected filters.
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-muted-foreground">
-                    <th className="py-2 pr-4 font-medium">Timestamp</th>
-                    <th className="py-2 pr-4 font-medium">Inverter SN</th>
-                    <th className="py-2 pr-4 font-medium">Status</th>
-                    <th className="py-2 pr-4 font-medium">Power</th>
-                    <th className="py-2 pr-4 font-medium">Daily</th>
-                    <th className="py-2 pr-4 font-medium">Total</th>
-                    <th className="py-2 font-medium">Temp</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => (
-                    <tr key={`${r.device_sn}-${r.recorded_at}-${r.id}`} className="border-b last:border-0">
-                      <td className="py-2.5 pr-4 whitespace-nowrap">
+            <>
+              {/* Mobile Card View */}
+              <div className="space-y-2.5 md:hidden">
+                {rows.map((r) => (
+                  <div
+                    key={`m-${r.device_sn}-${r.recorded_at}-${r.id}`}
+                    className="rounded-xl border p-3 text-xs space-y-2"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-foreground">
                         {new Date(r.recorded_at).toLocaleString()}
-                      </td>
-                      <td className="py-2.5 pr-4 font-mono text-xs">{r.device_sn}</td>
-                      <td className="py-2.5 pr-4">
-                        <Badge variant={r.status === 'online' ? 'success' : 'secondary'}>
-                          {r.status}
-                        </Badge>
-                      </td>
-                      <td className="py-2.5 pr-4">
-                        {r.power_w != null ? `${Math.round(r.power_w)} W` : '—'}
-                      </td>
-                      <td className="py-2.5 pr-4">
-                        {r.daily_energy_kwh != null ? `${r.daily_energy_kwh} kWh` : '—'}
-                      </td>
-                      <td className="py-2.5 pr-4">
-                        {r.total_energy_kwh != null ? `${r.total_energy_kwh} kWh` : '—'}
-                      </td>
-                      <td className="py-2.5">
-                        {r.temperature_c != null ? `${r.temperature_c} °C` : '—'}
-                      </td>
+                      </span>
+                      <Badge variant={r.status === 'online' ? 'success' : 'secondary'}>
+                        {r.status}
+                      </Badge>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-muted-foreground">
+                      <div>
+                        SN: <span className="font-mono text-foreground">{r.device_sn}</span>
+                      </div>
+                      <div>
+                        Power:{' '}
+                        <span className="font-semibold text-foreground">
+                          {r.power_w != null ? `${Math.round(r.power_w)} W` : '—'}
+                        </span>
+                      </div>
+                      <div>
+                        Daily:{' '}
+                        <span className="font-semibold text-foreground">
+                          {r.daily_energy_kwh != null ? `${r.daily_energy_kwh} kWh` : '—'}
+                        </span>
+                      </div>
+                      <div>
+                        Total:{' '}
+                        <span className="font-semibold text-foreground">
+                          {r.total_energy_kwh != null ? `${r.total_energy_kwh} kWh` : '—'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop Table View */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-muted-foreground">
+                      <th className="py-2 pr-4 font-medium">Timestamp</th>
+                      <th className="py-2 pr-4 font-medium">Inverter SN</th>
+                      <th className="py-2 pr-4 font-medium">Status</th>
+                      <th className="py-2 pr-4 font-medium">Power</th>
+                      <th className="py-2 pr-4 font-medium">Daily</th>
+                      <th className="py-2 pr-4 font-medium">Total</th>
+                      <th className="py-2 font-medium">Temp</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {rows.map((r) => (
+                      <tr
+                        key={`${r.device_sn}-${r.recorded_at}-${r.id}`}
+                        className="border-b last:border-0"
+                      >
+                        <td className="py-2.5 pr-4 whitespace-nowrap">
+                          {new Date(r.recorded_at).toLocaleString()}
+                        </td>
+                        <td className="py-2.5 pr-4 font-mono text-xs">{r.device_sn}</td>
+                        <td className="py-2.5 pr-4">
+                          <Badge variant={r.status === 'online' ? 'success' : 'secondary'}>
+                            {r.status}
+                          </Badge>
+                        </td>
+                        <td className="py-2.5 pr-4">
+                          {r.power_w != null ? `${Math.round(r.power_w)} W` : '—'}
+                        </td>
+                        <td className="py-2.5 pr-4">
+                          {r.daily_energy_kwh != null ? `${r.daily_energy_kwh} kWh` : '—'}
+                        </td>
+                        <td className="py-2.5 pr-4">
+                          {r.total_energy_kwh != null ? `${r.total_energy_kwh} kWh` : '—'}
+                        </td>
+                        <td className="py-2.5">
+                          {r.temperature_c != null ? `${r.temperature_c} °C` : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
 
           <div className="flex items-center justify-between pt-4">

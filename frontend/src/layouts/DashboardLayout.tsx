@@ -224,6 +224,7 @@ export function DashboardLayout({ darkMode, onToggleDark }: DashboardLayoutProps
                 <option value={10}>10m</option>
                 <option value={15}>15m</option>
                 <option value={30}>30m</option>
+                <option value={60}>1h</option>
               </select>
             </div>
 
@@ -252,9 +253,32 @@ export function DashboardLayout({ darkMode, onToggleDark }: DashboardLayoutProps
           </div>
         </header>
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
+        <main className="flex-1 p-4 pb-20 sm:p-6 sm:pb-20 lg:p-8 lg:pb-8 max-w-7xl w-full mx-auto">
           <Outlet />
         </main>
+
+        {/* Mobile Bottom Navigation */}
+        <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t bg-card/95 backdrop-blur-md grid grid-cols-5 h-16">
+          {navItems.slice(0, 5).map((item) => {
+            const Icon = item.icon
+            return (
+              <NavLink
+                key={`mobile-${item.to}`}
+                to={item.to}
+                end={item.to === '/'}
+                className={({ isActive }) =>
+                  cn(
+                    'flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors',
+                    isActive ? 'text-primary' : 'text-muted-foreground',
+                  )
+                }
+              >
+                <Icon className="h-4 w-4" />
+                <span>{item.label}</span>
+              </NavLink>
+            )
+          })}
+        </nav>
       </div>
     </div>
   )

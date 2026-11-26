@@ -145,13 +145,19 @@ export const solarDataService = {
     page: number
     pageSize: number
     deviceSn?: string
-    startDate?: string
-    endDate?: string
+    startIso?: string
+    endIso?: string
   }): Promise<{ rows: InverterReading[]; total: number }> {
     if (!isSupabaseConfigured || !supabase) {
       let filtered = [...DEMO_INVERTER_READINGS].reverse()
       if (params.deviceSn && params.deviceSn !== 'all') {
         filtered = filtered.filter((r) => r.device_sn === params.deviceSn)
+      }
+      if (params.startIso) {
+        filtered = filtered.filter((r) => r.recorded_at >= params.startIso!)
+      }
+      if (params.endIso) {
+        filtered = filtered.filter((r) => r.recorded_at <= params.endIso!)
       }
       const start = params.page * params.pageSize
       return {
@@ -171,11 +177,11 @@ export const solarDataService = {
     if (params.deviceSn && params.deviceSn !== 'all') {
       query = query.eq('device_sn', params.deviceSn)
     }
-    if (params.startDate) {
-      query = query.gte('recorded_at', `${params.startDate}T00:00:00Z`)
+    if (params.startIso) {
+      query = query.gte('recorded_at', params.startIso)
     }
-    if (params.endDate) {
-      query = query.lte('recorded_at', `${params.endDate}T23:59:59Z`)
+    if (params.endIso) {
+      query = query.lte('recorded_at', params.endIso)
     }
 
     const from = params.page * params.pageSize
