@@ -204,9 +204,10 @@ export function DashboardLayout({ darkMode, onToggleDark }: DashboardLayoutProps
             >
               {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </Button>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="hidden sm:flex items-center gap-2 text-sm text-muted-foreground">
               <Activity className="h-4 w-4 text-emerald-500" />
-              <span className="hidden sm:inline">DeyeCloud Scheduled Collector (30m)</span>
+              <span className="font-medium text-foreground">Deye Solar</span>
+              <span className="text-xs">Monitor V2</span>
             </div>
           </div>
 
@@ -245,14 +246,15 @@ export function DashboardLayout({ darkMode, onToggleDark }: DashboardLayoutProps
               <span className="hidden sm:inline">Refresh</span>
             </Button>
 
-            <span className="hidden xl:inline text-xs text-muted-foreground whitespace-nowrap">
-              Last refreshed: {lastRefreshedAt.toLocaleTimeString()} (
-              {lastRefreshMode === 'auto'
-                ? 'Auto'
-                : lastRefreshMode === 'manual'
-                  ? 'Manual'
-                  : 'Loaded'}
-              )
+            <span className="hidden md:inline text-xs text-muted-foreground whitespace-nowrap">
+              {lastRefreshedAt.toLocaleTimeString()}{' '}
+              <span className="text-[10px]">
+                ({lastRefreshMode === 'auto'
+                  ? `Auto ${refreshMinutes}m`
+                  : lastRefreshMode === 'manual'
+                    ? 'Manual'
+                    : 'Loaded'})
+              </span>
             </span>
 
             {isDemoMode ? (

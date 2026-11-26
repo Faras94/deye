@@ -114,7 +114,7 @@ export function SettingsPage() {
   }
 
   const visibleSettings = useMemo(
-    () => (settings ?? []).filter((s) => s.key !== 'deye_token_cache'),
+    () => (settings ?? []).filter((s) => !s.key.includes('token') && !s.key.includes('cache')),
     [settings],
   )
 
@@ -428,7 +428,9 @@ export function SettingsPage() {
           {visibleSettings.map((s) => (
             <div key={s.key} className="rounded-lg border p-3">
               <div className="text-xs text-muted-foreground">{s.description || s.key}</div>
-              <div className="font-mono text-xs mt-0.5">{JSON.stringify(s.value)}</div>
+              <div className="font-medium text-sm mt-0.5">
+                {typeof s.value === 'string' ? s.value : String(s.value)}
+              </div>
             </div>
           ))}
         </CardContent>
