@@ -53,7 +53,7 @@ export function DashboardLayout({ darkMode, onToggleDark }: DashboardLayoutProps
   })
   const [refreshing, setRefreshing] = useState(false)
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date>(() => new Date())
-  const [lastRefreshMode, setLastRefreshMode] = useState<'auto' | 'manual' | 'initial'>('initial')
+  const [lastRefreshMode, setLastRefreshMode] = useState<'auto' | 'manual'>('manual')
   const queryClient = useQueryClient()
   const { profile, role, isDemoMode, signOut, switchDemoRole } = useAuth()
   const { data: alerts } = useAlerts()
@@ -249,11 +249,7 @@ export function DashboardLayout({ darkMode, onToggleDark }: DashboardLayoutProps
             <span className="hidden md:inline text-xs text-muted-foreground whitespace-nowrap">
               {lastRefreshedAt.toLocaleTimeString()}{' '}
               <span className="text-[10px]">
-                ({lastRefreshMode === 'auto'
-                  ? `Auto ${refreshMinutes}m`
-                  : lastRefreshMode === 'manual'
-                    ? 'Manual'
-                    : 'Loaded'})
+                ({lastRefreshMode === 'auto' ? `Auto ${refreshMinutes}m` : 'Manual'})
               </span>
             </span>
 
