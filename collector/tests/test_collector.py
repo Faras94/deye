@@ -195,3 +195,8 @@ def test_auth_failure_creates_alert_and_failed_log():
     assert len(repo.alerts) == 1
     assert repo.alerts[0]["alert_type"] == "api_auth_failure"
     assert repo.logs[-1]["status"] == "failed"
+
+
+def test_empty_company_id_defaults_to_zero():
+    s = CollectorSettings(deye_company_id="")
+    assert s.deye_company_id == 0

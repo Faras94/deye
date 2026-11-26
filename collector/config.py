@@ -6,7 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import List
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -28,6 +28,13 @@ class CollectorSettings(BaseSettings):
     deye_password: str = Field(default="")
     deye_device_sns: str = Field(default="260605A076,260603A1D5,260505A373")
     deye_company_id: int = Field(default=0)
+
+    @field_validator("deye_company_id", mode="before")
+    @classmethod
+    def _parse_company_id(cls, value: object) -> int:
+        if value is None or str(value).strip() == "":
+            return 0
+        return int(str(value).strip())
 
     supabase_url: str = Field(default="")
     supabase_service_role_key: str = Field(default="")
