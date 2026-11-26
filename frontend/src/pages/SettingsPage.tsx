@@ -101,6 +101,18 @@ export function SettingsPage() {
     }
   }, [collectionLogs])
 
+  const formatEndpointName = (path: string) => {
+    const names: Record<string, string> = {
+      '/v1.0/device/latest': 'Live Telemetry',
+      '/v1.0/account/token': 'Auth Token',
+      '/v1.0/station/list': 'Station List',
+      '/v1.0/station/device': 'Station Devices',
+      '/v1.0/device/measurePoints': 'Measure Points',
+      '/v1.0/device/history': 'Device History',
+    }
+    return names[path] ? `${names[path]} (${path})` : path
+  }
+
   const visibleSettings = useMemo(
     () => (settings ?? []).filter((s) => s.key !== 'deye_token_cache'),
     [settings],
@@ -154,15 +166,15 @@ export function SettingsPage() {
               {apiUsage.endpoints.length > 0 ? (
                 <div className="mt-1 space-y-1">
                   {apiUsage.endpoints.map(([path, count]) => (
-                    <div key={path} className="flex justify-between text-xs">
-                      <span className="font-mono truncate">{path}</span>
-                      <span className="font-semibold">{count}</span>
+                    <div key={path} className="flex justify-between gap-2 text-xs">
+                      <span className="truncate">{formatEndpointName(path)}</span>
+                      <span className="font-semibold shrink-0">{count}</span>
                     </div>
                   ))}
                 </div>
               ) : (
                 <div className="text-xs text-muted-foreground mt-1">
-                  Endpoint breakdown available on next collector run
+                  Endpoint breakdown will appear after the next collector run
                 </div>
               )}
             </div>
@@ -175,34 +187,43 @@ export function SettingsPage() {
                   <th className="py-2 pr-3 font-medium">Run Time</th>
                   <th className="py-2 pr-3 font-medium">Status</th>
                   <th className="py-2 pr-3 font-medium">API Calls</th>
+                  <th className="py-2 pr-3 font-medium">Endpoints</th>
                   <th className="py-2 pr-3 font-medium">Devices</th>
                   <th className="py-2 font-medium">Readings Saved</th>
                 </tr>
               </thead>
               <tbody>
-                {(collectionLogs ?? []).slice(0, 8).map((log) => (
-                  <tr key={log.id} className="border-b last:border-0">
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {new Date(log.started_at).toLocaleString()}
-                    </td>
-                    <td className="py-2 pr-3">
-                      <Badge
-                        variant={
-                          log.status === 'success'
-                            ? 'success'
-                            : log.status === 'failed'
-                              ? 'destructive'
-                              : 'warning'
-                        }
-                      >
-                        {log.status}
-                      </Badge>
-                    </td>
-                    <td className="py-2 pr-3 font-semibold">{log.api_calls_made}</td>
-                    <td className="py-2 pr-3">{log.devices_queried}</td>
-                    <td className="py-2">{log.readings_inserted}</td>
-                  </tr>
-                ))}
+                {(collectionLogs ?? []).slice(0, 8).map((log) => {
+                  const epEntries = Object.entries(log.details?.endpoints ?? {})
+                  return (
+                    <tr key={log.id} className="border-b last:border-0">
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {new Date(log.started_at).toLocaleString()}
+                      </td>
+                      <td className="py-2 pr-3">
+                        <Badge
+                          variant={
+                            log.status === 'success'
+                              ? 'success'
+                              : log.status === 'failed'
+                                ? 'destructive'
+                                : 'warning'
+                          }
+                        >
+                          {log.status}
+                        </Badge>
+                      </td>
+                      <td className="py-2 pr-3 font-semibold">{log.api_calls_made}</td>
+                      <td className="py-2 pr-3 text-muted-foreground">
+                        {epEntries.length > 0
+                          ? epEntries.map(([p, c]) => `${formatEndpointName(p)} ×${c}`).join(', ')
+                          : '—'}
+                      </td>
+                      <td className="py-2 pr-3">{log.devices_queried}</td>
+                      <td className="py-2">{log.readings_inserted}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
