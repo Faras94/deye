@@ -18,18 +18,30 @@ export function SolarArrayView({
 }: SolarArrayViewProps) {
   const invOrder = new Map(inverters.map((inv, idx) => [inv.id, inv.display_order ?? idx]))
 
+  const extractPvNumber = (name: string): number | null => {
+    const match = name.trim().match(/\bPV\s*(\d+)\b/i) || name.trim().match(/(\d+)/)
+    return match ? Number(match[1]) : null
+  }
+
   const orderedPanels = [...panels].sort((a, b) => {
+    const pvA = extractPvNumber(a.name)
+    const pvB = extractPvNumber(b.name)
+    if (pvA !== null && pvB !== null && pvA !== pvB) {
+      return pvA - pvB
+    }
+    if (pvA !== null && pvB === null) return -1
+    if (pvA === null && pvB !== null) return 1
     const orderDiff = (invOrder.get(a.inverter_id) ?? 99) - (invOrder.get(b.inverter_id) ?? 99)
     if (orderDiff !== 0) return orderDiff
     return a.channel_index - b.channel_index
   })
 
   // Group into arrays of 4: Array 1 (PV1 - PV4), Array 2 (PV5 - PV8), ...
-  const arrays: Array<{ label: string; items: Array<{ panel: Panel; pvNum: number }> }> = []
+  const arrays: Array<{ label: string; items: Array<{ panel: Panel; pvLabel: string }> }> = []
   for (let i = 0; i < orderedPanels.length; i += 4) {
     const slice = orderedPanels.slice(i, i + 4).map((panel, offset) => ({
       panel,
-      pvNum: i + offset + 1,
+      pvLabel: panel.name?.trim() || `PV${i + offset + 1}`,
     }))
     const startPv = i + 1
     const endPv = i + slice.length
@@ -115,7 +127,7 @@ export function SolarArrayView({
 
             <div className="rounded-xl border-2 border-slate-300/40 bg-slate-900/50 p-2 sm:p-2.5 shadow-inner">
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-2.5">
-                {arr.items.map(({ panel, pvNum }) => {
+                {arr.items.map(({ panel, pvLabel }) => {
                   const history = readingsByPanel.get(panel.id) ?? []
                   const latest = history[history.length - 1]
                   const powerW = latest?.power_w
@@ -138,13 +150,8 @@ export function SolarArrayView({
 
                       {/* Frosted reading card */}
                       <div className="relative z-10 w-full rounded-lg border border-sky-300/35 bg-slate-950/70 backdrop-blur-sm px-3 py-2.5 text-center shadow">
-                        <div className="text-xs font-semibold text-sky-200 tracking-wide">
-                          PV{pvNum}
-                          {panel.name && panel.name !== `PV${pvNum}` ? (
-                            <span className="text-[10px] text-sky-300/75 font-normal block truncate">
-                              {panel.name}
-                            </span>
-                          ) : null}
+                        <div className="text-xs font-semibold text-sky-200 tracking-wide truncate">
+                          {pvLabel}
                         </div>
                         <div className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white my-0.5">
                           {powerW != null ? (
