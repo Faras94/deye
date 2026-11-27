@@ -82,10 +82,10 @@ async function supabaseFetch(supabaseUrl, serviceKey, path, options = {}) {
 async function verifyUserSession(request, supabaseUrl, serviceKey) {
   const authHeader = request.headers.get('Authorization') || ''
   if (!authHeader.startsWith('Bearer ')) {
-    return false
+    return { ok: false, reason: 'Missing Bearer token' }
   }
   const token = authHeader.slice(7).trim()
-  if (!token) return false
+  if (!token) return { ok: false, reason: 'Empty Bearer token' }
 
   const resp = await fetch(`${supabaseUrl.replace(/\/+$/, '')}/auth/v1/user`, {
     headers: {
@@ -93,7 +93,9 @@ async function verifyUserSession(request, supabaseUrl, serviceKey) {
       Authorization: `Bearer ${token}`,
     },
   })
-  return resp.ok
+  if (resp.ok) return { ok: true }
+  const errText = await resp.text().catch(() => '')
+  return { ok: false, reason: `Auth ${resp.status}: ${errText.slice(0, 100)}` }
 }
 
 async function getDeyeToken(env, supabaseUrl, serviceKey, deyeBaseUrl, endpointCounts) {
@@ -176,9 +178,12 @@ async function handleLiveCollect(request, env) {
   const supabaseUrl = env.SUPABASE_URL.trim().replace(/\/+$/, '')
   const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY.trim()
 
-  const authorized = await verifyUserSession(request, supabaseUrl, serviceKey)
-  if (!authorized) {
-    return jsonResponse({ error: 'Unauthorized: please sign in to fetch live API data.' }, 401)
+  const authCheck = await verifyUserSession(request, supabaseUrl, serviceKey)
+  if (!authCheck.ok) {
+    return jsonResponse(
+      { error: `Unauthorized: please sign in to fetch live API data. (${authCheck.reason})` },
+      401,
+    )
   }
 
   let deyeBase = env.DEYE_BASE_URL.trim().replace(/^["']|["']$/g, '').replace(/\/+$/, '')

@@ -88,19 +88,37 @@ export function DashboardLayout({ darkMode, onToggleDark }: DashboardLayoutProps
     setLiveStatusMsg('Fetching live data from DeyeCloud API...')
 
     try {
-      const { data: sessionData } = await supabase.auth.getSession()
-      const accessToken = sessionData.session?.access_token
+      let { data: sessionData } = await supabase.auth.getSession()
+      let accessToken = sessionData.session?.access_token
+      if (!accessToken) {
+        const refreshed = await supabase.auth.refreshSession()
+        accessToken = refreshed.data.session?.access_token
+      }
       if (!accessToken) {
         throw new Error('Please sign in again to fetch live API data.')
       }
 
-      const resp = await fetch('/api/collect', {
+      let resp = await fetch('/api/collect', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
       })
+
+      if (resp.status === 401) {
+        const refreshed = await supabase.auth.refreshSession()
+        const newToken = refreshed.data.session?.access_token
+        if (newToken) {
+          resp = await fetch('/api/collect', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${newToken}`,
+              'Content-Type': 'application/json',
+            },
+          })
+        }
+      }
 
       const body = await resp.json().catch(() => ({}))
       if (!resp.ok) {
