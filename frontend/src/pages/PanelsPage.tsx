@@ -4,7 +4,9 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  Cpu,
   Info,
+  LayoutGrid,
   Leaf,
   Pencil,
   Sun,
@@ -24,6 +26,7 @@ import {
   PanelSparkline,
   SolarPanelGraphic,
 } from '@/components/SolarGraphics'
+import { SolarArrayView } from '@/components/SolarArrayView'
 import { useAuth } from '@/hooks/useAuth'
 import {
   useDailyEnergy,
@@ -47,6 +50,15 @@ export function PanelsPage() {
   const [draftName, setDraftName] = useState('')
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [trendRange, setTrendRange] = useState<'today' | '7d' | '30d'>('today')
+  const [viewMode, setViewMode] = useState<'array' | 'grouped'>(() => {
+    const saved = localStorage.getItem('deye-panels-view')
+    return saved === 'grouped' ? 'grouped' : 'array'
+  })
+
+  const handleViewChange = (mode: 'array' | 'grouped') => {
+    setViewMode(mode)
+    localStorage.setItem('deye-panels-view', mode)
+  }
 
   const renameMutation = useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) =>
@@ -189,7 +201,37 @@ export function PanelsPage() {
         </div>
       </div>
 
-      {/* Grouped Microinverter -> Panel Cards */}
+      {/* View Mode Switcher */}
+      <div className="flex items-center justify-end gap-2">
+        <div className="inline-flex items-center gap-1 rounded-xl border bg-card p-1 text-xs">
+          <button
+            type="button"
+            onClick={() => handleViewChange('array')}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-medium transition-colors ${
+              viewMode === 'array'
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <LayoutGrid className="h-3.5 w-3.5" />
+            <span>Array View (PV1–PV8)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleViewChange('grouped')}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-medium transition-colors ${
+              viewMode === 'grouped'
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Cpu className="h-3.5 w-3.5" />
+            <span>Inverter Grouped</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Grouped Microinverter -> Panel Cards OR Array View (PV1-PV8) */}
       {!panels || panels.length === 0 ? (
         <Card>
           <CardContent className="py-10 text-center space-y-2">
@@ -201,6 +243,14 @@ export function PanelsPage() {
             </p>
           </CardContent>
         </Card>
+      ) : viewMode === 'array' ? (
+        <SolarArrayView
+          panels={panels}
+          inverters={inverters ?? []}
+          readingsByPanel={readingsByPanel}
+          latestInvBySn={latestInvBySn}
+          totalPowerW={totalPowerW}
+        />
       ) : (
         <div className="space-y-4">
           {inverters?.map((inv) => {

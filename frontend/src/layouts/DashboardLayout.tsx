@@ -25,7 +25,7 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { useAuth } from '@/hooks/useAuth'
-import { useAlerts, useCollectionLogs } from '@/hooks/useSolarQueries'
+ import { useAlerts, useCollectionLogs } from '@/hooks/useSolarQueries'
 import { supabase } from '@/services/supabase'
 import { cn } from '@/lib/utils'
 
